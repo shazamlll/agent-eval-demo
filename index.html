@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Eval Demo — Retrieval &amp; Generation Evaluation</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5a5a5a; --line:#ddd; --accent:#0b5fff; --ok:#0a7a3d; --bad:#b3261e; --bg:#fafafa; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); line-height:1.55; }
+  header { background:#111; color:#fff; padding:28px 20px; }
+  header h1 { margin:0 0 6px; font-size:24px; }
+  header p { margin:4px 0; color:#ccc; max-width:820px; }
+  main { max-width:860px; margin:0 auto; padding:20px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+  h2 { margin:0 0 8px; font-size:19px; }
+  h3 { margin:16px 0 6px; font-size:15px; }
+  p { margin:8px 0; }
+  .note { background:#fff8e1; border:1px solid #f0d48a; border-radius:8px; padding:10px 12px; font-size:14px; }
+  .note b { color:#7a5b00; }
+  .muted { color:var(--muted); font-size:14px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; margin:10px 0; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#f2f2f2; }
+  code { background:#f0f0f0; padding:1px 5px; border-radius:4px; font-size:13px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; font-size:14px; cursor:pointer; margin:4px 6px 4px 0; }
+  button.secondary { background:#eee; color:#222; }
+  button:hover { opacity:.88; }
+  button:disabled { opacity:.5; cursor:default; }
+  .pass { color:var(--ok); font-weight:700; }
+  .fail { color:var(--bad); font-weight:700; }
+  .result { background:#f6f8ff; border:1px solid #c9d6ff; border-radius:8px; padding:12px; margin-top:10px; font-size:14px; }
+  .result:empty { display:none; }
+  textarea { width:100%; min-height:74px; font:14px/1.5 inherit; padding:8px; border:1px solid var(--line); border-radius:6px; }
+  ul.checks { list-style:none; padding:0; margin:8px 0; }
+  ul.checks li { padding:4px 0; }
+  .tag { display:inline-block; font-size:12px; background:#eef2ff; border:1px solid #c9d6ff; border-radius:20px; padding:2px 9px; margin:2px 4px 2px 0; }
+  footer { max-width:860px; margin:0 auto 30px; padding:0 20px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Eval Demo — Retrieval &amp; Generation Evaluation</h1>
+  <p>An interactive demonstration of the evaluation methodology I use as a Senior SDET:
+     retrieval and generation eval datasets, deterministic checks, independent semantic
+     review, input decontamination, and dataset version freezing.</p>
+  <p><b>All sample data on this page is synthetic</b> — invented for this demonstration.
+     The real datasets were built from internal archived requirements and are not published here.</p>
+</header>
+
+<main>
+  <section>
+    <h2>How the methodology fits together</h2>
+    <p>Two datasets, built from archived requirements:</p>
+    <ul>
+      <li><b>Retrieval eval</b> — a task is a requirement; its gold answers are existing
+          test cases, recalled and confirmed on the spot. Score: how many gold answers the
+          retriever finds (recall), and how many tasks are fully covered (exact match).</li>
+      <li><b>Generation eval</b> — a task is a requirement design; its gold answers are the
+          test cases finally committed for that requirement. A generated case is checked with
+          deterministic file checks <i>and</i> an independent semantic review.</li>
+    </ul>
+    <p>Both datasets go through the same hygiene steps before any run:
+       <span class="tag">input decontamination</span>
+       <span class="tag">leakage checks</span>
+       <span class="tag">version freeze</span></p>
+    <div class="note"><b>Scope of this demo.</b> Dataset construction, deterministic checks,
+      semantic review, decontamination, and versioning. Out of scope here: automated judge
+      rubrics, pass thresholds, and CI eval gates — those are not part of this demo.</div>
+    <p class="muted">Real-world shape, for scale: in production I built a retrieval set of
+      ~20 tasks / ~100 gold answers and a generation set of ~10 tasks / ~40 gold answers.
+      This page uses a 6-task synthetic subset so the pieces can be run in the browser.</p>
+  </section>
+
+  <section>
+    <h2>1 · Retrieval eval</h2>
+    <p>Synthetic domain: test-case retrieval for an online bookstore's search feature.
+       Each task lists its gold answers (existing test cases). Press run to simulate the
+       retriever and score it.</p>
+    <table id="retrieval-table">
+      <thead><tr><th>Task</th><th>Requirement (synthetic)</th><th>Gold answers</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button id="run-retrieval">Run retrieval eval</button>
+    <div class="result" id="retrieval-result"></div>
+  </section>
+
+  <section>
+    <h2>2 · Generation eval</h2>
+    <p>A generated test case is scored twice: deterministic checks (mechanical, reproducible)
+       and an independent semantic review (does it actually complete the task, use tools
+       correctly, and avoid prohibited actions?).</p>
+    <h3>Sample A — a good generated case</h3>
+    <p class="muted">Requirement: “Search ignores case and punctuation.” Generated case
+       references <code>TC-112</code> and <code>TC-113</code>, has preconditions, steps,
+       and assertions.</p>
+    <h3>Sample B — a flawed generated case</h3>
+    <p class="muted">Same requirement. The generated case references <code>TC-999</code>
+       (an ID that does not exist) and has no assertions.</p>
+    <button id="run-generation">Run deterministic checks + semantic review</button>
+    <div class="result" id="generation-result"></div>
+  </section>
+
+  <section>
+    <h2>3 · Input decontamination &amp; leakage check</h2>
+    <p>Before a requirement enters a dataset, its input is stripped of answer IDs and
+       checked for leakage: if the input itself names a gold answer, the task is
+       contaminated and must be fixed or dropped. Try it — paste any text and check it
+       against the synthetic gold set (<code>TC-101</code> … <code>TC-116</code>).</p>
+    <textarea id="leak-input" placeholder="Paste a requirement description here…"></textarea><br>
+    <button id="check-leak">Check this input</button>
+    <button class="secondary" id="load-clean">Load clean input</button>
+    <button class="secondary" id="load-contaminated">Load contaminated input</button>
+    <div class="result" id="leak-result"></div>
+  </section>
+
+  <section>
+    <h2>4 · Dataset version freeze</h2>
+    <p>A dataset version is frozen once it is used for a run, so results stay reproducible.
+       Changes go into the next draft version instead of mutating the frozen one.</p>
+    <table id="version-table">
+      <thead><tr><th>Version</th><th>Status</th><th>Contents</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button id="freeze-version">Freeze v1.1.0</button>
+    <div class="result" id="version-result"></div>
+  </section>
+</main>
+
+<footer>
+  <p>Author: Zhenghao Li — Senior SDET. This page demonstrates methodology with synthetic
+     data only. The real evaluation datasets are internal and are not included in this repository.</p>
+</footer>
+
+<script>
+"use strict";
+
+// ---- Synthetic retrieval dataset -------------------------------------------
+const RETRIEVAL_TASKS = [
+  { id: "R1", req: "Search returns books matching a partial title", gold: ["TC-101", "TC-102", "TC-103"] },
+  { id: "R2", req: "Search filters by author and publication year", gold: ["TC-104", "TC-105"] },
+  { id: "R3", req: "Search handles a query with no matches", gold: ["TC-106", "TC-107", "TC-108", "TC-109"] },
+  { id: "R4", req: "Search ranks exact-title matches first", gold: ["TC-110", "TC-111"] },
+  { id: "R5", req: "Search ignores case and punctuation", gold: ["TC-112", "TC-113", "TC-114"] },
+  { id: "R6", req: "Search suggests corrections for typos", gold: ["TC-115", "TC-116"] },
+];
+// Mock retriever: deterministic per task, deliberately imperfect, so the
+// scoring has something real to report (a miss is a finding, not a bug).
+const MOCK_RETRIEVAL = {
+  R1: ["TC-101", "TC-102", "TC-103"],
+  R2: ["TC-104"],
+  R3: ["TC-106", "TC-107", "TC-108"],
+  R4: ["TC-110", "TC-111"],
+  R5: ["TC-112", "TC-113"],
+  R6: ["TC-115", "TC-116"],
+};
+
+function renderRetrievalTable() {
+  const tbody = document.querySelector("#retrieval-table tbody");
+  tbody.innerHTML = RETRIEVAL_TASKS.map(t =>
+    `<tr><td><code>${t.id}</code></td><td>${t.req}</td><td>${t.gold.map(g => `<code>${g}</code>`).join(" ")}</td></tr>`
+  ).join("");
+}
+
+document.getElementById("run-retrieval").addEventListener("click", () => {
+  let totalGold = 0, totalFound = 0, exactTasks = 0;
+  const rows = RETRIEVAL_TASKS.map(t => {
+    const found = MOCK_RETRIEVAL[t.id].filter(g => t.gold.includes(g));
+    const missed = t.gold.filter(g => !MOCK_RETRIEVAL[t.id].includes(g));
+    totalGold += t.gold.length;
+    totalFound += found.length;
+    if (missed.length === 0) exactTasks++;
+    const recall = (found.length / t.gold.length * 100).toFixed(0);
+    return `<tr><td><code>${t.id}</code></td><td>${found.length}/${t.gold.length}</td><td>${recall}%</td><td>${missed.length ? "missed " + missed.map(m => `<code>${m}</code>`).join(" ") : "—"}</td></tr>`;
+  }).join("");
+  const overall = (totalFound / totalGold * 100).toFixed(2);
+  document.getElementById("retrieval-result").innerHTML =
+    `<b>Overall recall: ${totalFound}/${totalGold} = ${overall}%</b> · ` +
+    `exact-match tasks: ${exactTasks}/${RETRIEVAL_TASKS.length}<br>` +
+    `<table><thead><tr><th>Task</th><th>Found</th><th>Recall</th><th>Missed gold</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<p class="muted">Reading the result: R2, R3 and R5 each miss one gold answer. ` +
+    `That is the signal — the misses say where retrieval (or the dataset) needs work, ` +
+    `and the frozen version below is what makes this score reproducible.</p>`;
+});
+
+// ---- Generation eval ---------------------------------------------------------
+const GEN_SAMPLES = [
+  {
+    name: "Sample A", refs: ["TC-112", "TC-113"], hasPreconditions: true, hasAssertions: true,
+    coversCriteria: true, semantic: [
+      ["Task completion", "pass", "Covers the requirement's acceptance criteria."],
+      ["Tool use", "pass", "References only real test-case IDs."],
+      ["Prohibited actions", "pass", "No forbidden operations."],
+    ],
+  },
+  {
+    name: "Sample B", refs: ["TC-999"], hasPreconditions: true, hasAssertions: false,
+    coversCriteria: true, semantic: [
+      ["Task completion", "pass", "Covers the requirement's acceptance criteria."],
+      ["Tool use", "flag", "References TC-999, an ID that does not exist — a hallucinated reference."],
+      ["Prohibited actions", "pass", "No forbidden operations."],
+    ],
+  },
+];
+const KNOWN_IDS = new Set(RETRIEVAL_TASKS.flatMap(t => t.gold));
+
+function deterministicChecks(s) {
+  return [
+    ["Has preconditions", s.hasPreconditions],
+    ["Has assertions", s.hasAssertions],
+    ["References only valid IDs", s.refs.every(r => KNOWN_IDS.has(r))],
+    ["Covers acceptance criteria", s.coversCriteria],
+  ];
+}
+
+document.getElementById("run-generation").addEventListener("click", () => {
+  const html = GEN_SAMPLES.map(s => {
+    const checks = deterministicChecks(s);
+    const passed = checks.filter(c => c[1]).length;
+    const checkList = checks.map(c =>
+      `<li>${c[1] ? '<span class="pass">✓</span>' : '<span class="fail">✗</span>'} ${c[0]}</li>`).join("");
+    const semList = s.semantic.map(r =>
+      `<li>${r[1] === "pass" ? '<span class="pass">pass</span>' : '<span class="fail">flag</span>'} — <b>${r[0]}</b>: ${r[2]}</li>`).join("");
+    const verdict = (passed === checks.length && s.semantic.every(r => r[1] === "pass"))
+      ? '<span class="pass">ACCEPT</span>' : '<span class="fail">REJECT — needs a fix</span>';
+    return `<h3>${s.name} — deterministic checks ${passed}/${checks.length} · ${verdict}</h3>` +
+      `<ul class="checks">${checkList}</ul>` +
+      `<p><b>Independent semantic review:</b></p><ul class="checks">${semList}</ul>`;
+  }).join("");
+  document.getElementById("generation-result").innerHTML = html +
+    `<p class="muted">Why two layers: deterministic checks catch mechanical errors ` +
+    `(missing assertions, invented IDs); the semantic review catches what a file check ` +
+    `cannot — whether the case actually does the job. Sample B fails both layers for the ` +
+    `same root cause, which is exactly the kind of agreement you want from a review.</p>`;
+});
+
+// ---- Decontamination / leakage check -----------------------------------------
+function checkLeakage(text) {
+  const found = [...KNOWN_IDS].filter(id => text.includes(id));
+  return found;
+}
+
+document.getElementById("check-leak").addEventListener("click", () => {
+  const text = document.getElementById("leak-input").value;
+  const el = document.getElementById("leak-result");
+  if (!text.trim()) { el.innerHTML = "Paste some text first."; return; }
+  const leaked = checkLeakage(text);
+  el.innerHTML = leaked.length
+    ? `<span class="fail">CONTAMINATED</span> — input names gold answer(s): ${leaked.map(id => `<code>${id}</code>`).join(", ")}. ` +
+      `Fix the input (remove the answer IDs) or drop the task from the dataset.`
+    : `<span class="pass">CLEAN</span> — no gold answer IDs found in the input. Safe to include.`;
+});
+document.getElementById("load-clean").addEventListener("click", () => {
+  document.getElementById("leak-input").value =
+    "As a shopper, I want search to ignore case, so that 'HARRY POTTER' and 'harry potter' return the same results.";
+  document.getElementById("leak-result").innerHTML = "";
+});
+document.getElementById("load-contaminated").addEventListener("click", () => {
+  document.getElementById("leak-input").value =
+    "As a shopper, I want search to ignore case. Expected: TC-112 and TC-113 should cover this.";
+  document.getElementById("leak-result").innerHTML = "";
+});
+
+// ---- Version freeze ------------------------------------------------------------
+const versions = [
+  { v: "v1.0.0", status: "frozen", note: "6 tasks, 16 gold answers — frozen 2026-11-12" },
+  { v: "v1.1.0-draft", status: "draft", note: "1 pending change: add R7 (search by ISBN)" },
+];
+function renderVersions() {
+  document.querySelector("#version-table tbody").innerHTML = versions.map(x =>
+    `<tr><td><code>${x.v}</code></td><td>${x.status === "frozen" ? '<span class="pass">frozen</span>' : "draft"}</td><td>${x.note}</td></tr>`
+  ).join("");
+}
+document.getElementById("freeze-version").addEventListener("click", (e) => {
+  const draft = versions.find(x => x.status === "draft");
+  if (!draft) { document.getElementById("version-result").innerHTML = "Nothing left to freeze."; e.target.disabled = true; return; }
+  draft.status = "frozen";
+  draft.v = "v1.1.0";
+  draft.note = "7 tasks, 18 gold answers — frozen " + new Date().toISOString().slice(0, 10);
+  versions.push({ v: "v1.2.0-draft", status: "draft", note: "No pending changes yet" });
+  renderVersions();
+  document.getElementById("version-result").innerHTML =
+    `<span class="pass">v1.1.0 frozen.</span> Runs against v1.0.0 and v1.1.0 now stay ` +
+    `reproducible; new changes go into v1.2.0-draft.`;
+  e.target.disabled = true;
+});
+
+renderRetrievalTable();
+renderVersions();
+</script>
+</body>
+</html>
